@@ -19,7 +19,7 @@ uvicorn app.main:app --reload --port 8000
 
 ## 3. Frontend
 ```bash
-cd dnd-frontend-fixed
+cd dnd-frontend
 npm install
 npm run dev
 ```
