@@ -1,0 +1,66 @@
+# app/agents/narrator.py
+
+from app.graph.state import AgentState
+from langchain_community.llms import Ollama
+
+llm = Ollama(model="qwen2:1.5b")
+
+
+async def narrator_node(state: AgentState) -> dict:
+    """
+    Writes the final atmospheric DM prose.
+    Incorporates system_context (character sheet + adventure prompt from frontend),
+    the mechanic's logic results, and the chronicler's world context.
+    """
+    system_context: str = state["game_state"].get("system_context", "")
+    history: str = state["game_state"].get("conversation_history", "")
+
+    system_prompt = f"""You are an expert D&D Dungeon Master.
+{system_context}
+
+Use the following inputs to write a short, atmospheric response (under 200 words):
+1. MECHANIC RULING: {state['logic_results']}
+2. WORLD CONTEXT: {state['world_context']}
+3. CONVERSATION SO FAR:
+{history}
+
+STRICT RULES - follow exactly:
+- Use present tense and second person ("You see...", "You notice...")
+- Never mention JSON, databases, dice rolls, or game mechanics by name
+- For companion party members ONLY, format dialogue EXACTLY as: **Name**: "quote here"
+  Example: **Elena**: "Wait, don't go yet!"
+- For NPCs (innkeepers, strangers, enemies etc), write their dialogue inline in the narration
+  Example: Mae leans forward, her voice a whisper. "Don't go up there. It's not safe."
+- Do NOT use **bold** formatting for NPC names
+- Keep each companion speech on its own line, do not split it across sentences
+- Never start a companion quote mid-sentence or let it bleed into narration
+"""
+
+    response = llm.invoke(
+        system_prompt + f"\n\nPlayer says: {state['user_input']}"
+    )
+
+    return {"narrative": response}
+
+
+async def proxy_node(state: AgentState) -> dict:
+    """AI-controlled party member decides and acts."""
+    party = state["game_state"].get("party", [])
+    proxy_players = [p for p in party if p.get("is_ai_proxy")]
+
+    if not proxy_players:
+        return state  # type: ignore[return-value]
+
+    active_player = proxy_players[0]
+
+    prompt = f"""You are playing a D&D character: {active_player['name']}.
+Your personality: {active_player.get('persona_profile', 'Brave and curious')}
+Current situation: {state['narrative']}
+
+Based on your personality, what do you do?
+Output in character for the group chat. Keep it short (1-2 sentences).
+"""
+
+    response = llm.invoke(prompt)
+    state["history"].append(f"{active_player['name']}: {response}")
+    return state  # type: ignore[return-value]
