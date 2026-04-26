@@ -4,7 +4,7 @@
 ```bash
 ollama serve
 ollama pull phi3:mini
-ollama run pull phi3:mini
+ollama run phi3:mini
 ```
 
 ## 2. Backend
